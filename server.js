@@ -9,8 +9,13 @@ require("dotenv").config({ path: ".env" });
 
 // Validate environment variables
 const SHARED_SECRET = process.env.SHARED_SECRET;
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : [];
 if (!SHARED_SECRET) {
-  console.error("Fatal: SHARED_SECRET environment variable is missing");
+  console.error('Fatal: SHARED_SECRET environment variable is missing');
+  process.exit(1);
+}
+if (!ALLOWED_ORIGINS.length) {
+  console.error('Fatal: ALLOWED_ORIGINS environment variable is missing or empty');
   process.exit(1);
 }
 
@@ -33,6 +38,15 @@ app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 wss.on("connection", async (wsClient, request) => {
   try {
     console.log("React app connected to proxy");
+
+    // Check Origin header
+    const currentOrigin = request?.headers?.origin;
+    if (!currentOrigin || !ALLOWED_ORIGINS.includes(currentOrigin)) {
+      console.error(`Unauthorized origin: ${currentOrigin}`);
+      wsClient.send(JSON.stringify({ error: 'Unauthorized origin' }));
+      wsClient.close(1008, 'Unauthorized origin');
+      return;
+    }
 
     // Parse and validate query parameters
     const { query } = url.parse(request.url, true);
